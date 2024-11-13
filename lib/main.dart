@@ -1,8 +1,8 @@
-import 'dart:math';
-
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
@@ -71,19 +71,20 @@ class _EnhancedMapState extends State<EnhancedMap> {
 
     try {
       Position position = await Geolocator.getCurrentPosition(
-          // ignore: deprecated_member_use
-          desiredAccuracy: LocationAccuracy.high);
+        desiredAccuracy: LocationAccuracy.high,
+      );
       LatLng currentLatLng = LatLng(position.latitude, position.longitude);
       _currentLocation = currentLatLng;
 
       if (mController != null) {
+        await _addImageFromAsset('icons', 'assets/images/icons.png');
         mController!
             .animateCamera(CameraUpdate.newLatLngZoom(currentLatLng, 14));
 
         // Add a custom marker at the current location
         mController!.addSymbol(SymbolOptions(
           geometry: currentLatLng,
-          iconImage: 'location',
+          iconImage: 'icons',
           iconSize: 2.0,
         ));
       }
@@ -92,65 +93,22 @@ class _EnhancedMapState extends State<EnhancedMap> {
     }
   }
 
-  // Handle map click to show location name and draw polyline
-  void _onMapClick(Point<double> point, LatLng coordinates) async {
-    if (_currentLocation == null) return;
-
-    // Fetch location name
-    String locationName = await _getLocationName(coordinates);
-
-    // Show location name
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text("Location Details"),
-          content: Text("Location: $locationName"),
-          actions: <Widget>[
-            TextButton(
-              child: Text("Close"),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-            ),
-          ],
-        );
-      },
-    );
-
-    // Draw a polyline from current location to the selected location
-    await mController?.addLine(LineOptions(
-      geometry: [_currentLocation!, coordinates],
-      lineColor: "#ff0000",
-      lineWidth: 3.0,
-      lineOpacity: 0.6,
-    ));
-  }
-
-  // Fetch location name using Barikoi reverse geolocation API
-  Future<String> _getLocationName(LatLng coordinates) async {
-    final url =
-        'https://barikoi.com/api/search/reverse/geocode/server/bkoi_7fd35604c8ed0d1e2e295ec851c16a2d45d8e3a34a8ec92f5f6e0b99efb27c45/place?longitude=${coordinates.longitude}&latitude=${coordinates.latitude}';
-    final response = await http.get(Uri.parse(url));
-
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      return data['place']['name'] ?? "Unknown location";
-    } else {
-      print('Failed to fetch location name');
-      return "Unknown location";
-    }
+  // Add image from asset to the map controller
+  Future<void> _addImageFromAsset(String name, String assetPath) async {
+    final ByteData bytes = await rootBundle.load(assetPath);
+    final Uint8List list = bytes.buffer.asUint8List();
+    await mController!.addImage(name, list);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: MaplibreMap(
+        myLocationEnabled: true,
         initialCameraPosition: initialPosition,
         onMapCreated: (MaplibreMapController mapController) {
           mController = mapController;
           _getCurrentLocation();
-          mController!.onMapClick?.add(_onMapClick); // Listen for map clicks
         },
         styleString: mapUrl,
       ),
@@ -160,8 +118,4 @@ class _EnhancedMapState extends State<EnhancedMap> {
       ),
     );
   }
-}
-
-extension on OnMapClickCallback? {
-  void add(void Function(Point<double> point, LatLng coordinates) onMapClick) {}
 }
