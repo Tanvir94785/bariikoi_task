@@ -34,6 +34,7 @@ class _EnhancedMapState extends State<EnhancedMap> {
   );
   MaplibreMapController? mController;
   LatLng? _currentLocation;
+  List<LatLng> polylineCoordinates = [];
 
   static const styleId = 'osm-liberty';
   static const apiKey =
@@ -100,6 +101,80 @@ class _EnhancedMapState extends State<EnhancedMap> {
     await mController!.addImage(name, list);
   }
 
+  // Handle map taps, fetch location name and draw polyline
+  Future<void> _onMapTapped(LatLng tappedLatLng) async {
+    if (mController == null) {
+      print("Map controller is not yet initialized.");
+      return;
+    }
+
+    // Add a marker on the tapped location
+    mController!.addSymbol(SymbolOptions(
+      geometry: tappedLatLng,
+      iconImage: 'icons',
+      iconSize: 2.0,
+    ));
+
+    // Get address using Barikoi reverse geolocation API
+    final address = await _getAddressFromLatLng(tappedLatLng);
+    _showAddressInfo(address);
+
+    // Draw polyline from current location to tapped location
+    if (_currentLocation != null) {
+      polylineCoordinates.add(_currentLocation!);
+      polylineCoordinates.add(tappedLatLng);
+
+      mController!.addLine(LineOptions(
+        geometry: polylineCoordinates,
+        lineColor: "#ff0000", // Red color for the polyline
+        lineWidth: 5.0, // Width of the line
+        lineOpacity: 0.5, // Transparency of the line
+      ));
+    }
+  }
+
+  // Fetch address info using Barikoi reverse geolocation API
+  Future<String> _getAddressFromLatLng(LatLng latLng) async {
+    try {
+      final url =
+          'https://api.barikoi.com/reverse?key=$apiKey&lat=${latLng.latitude}&lon=${latLng.longitude}';
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final address =
+            data['result']['formatted_address'] ?? 'No address found';
+        return address;
+      } else {
+        print('Failed to load address');
+        return 'No address found';
+      }
+    } catch (e) {
+      print('Error fetching address: $e');
+      return 'Error fetching address';
+    }
+  }
+
+  // Show address info in a dialog or panel
+  void _showAddressInfo(String address) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Location Address'),
+          content: Text(address),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -111,6 +186,9 @@ class _EnhancedMapState extends State<EnhancedMap> {
           _getCurrentLocation();
         },
         styleString: mapUrl,
+        onTap: (LatLng tappedLatLng) {
+          _onMapTapped(tappedLatLng);
+        },
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _getCurrentLocation,
